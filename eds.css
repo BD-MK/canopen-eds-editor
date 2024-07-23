@@ -153,10 +153,19 @@ fieldset:last-child table > * > tr > *:last-child {
   width: 0;
 }
 
-fieldset:last-child > table > tbody > tr > td:nth-child(8) input,
-fieldset:last-child > table > tbody > tr:nth-child(2) > td:nth-child(9) input,
-fieldset:last-child > table > tbody > tr:not(:first-child) > td:nth-child(7) input {
+fieldset:last-child > table > * > tr:first-child > td:nth-child(3) input,
+fieldset:last-child > table > * > tr:not(:first-child) > td:nth-child(2) input {
+  width: 100%;
+}
+
+fieldset:last-child > table > * > tr:first-child > td:nth-child(n + 8):nth-child(-n + 9) input[type="text"],
+fieldset:last-child > table > * > tr:not(:first-child) > td:nth-child(n + 7):nth-child(-n + 8) input[type="text"] {
   width: 5.5rem;
+}
+
+fieldset:last-child > table > * > tr:first-child > td:nth-child(10) input,
+fieldset:last-child > table > * > tr:not(:first-child) > td:nth-child(9) input {
+  width: 7.15rem;
 }
 
 .btn {
@@ -171,6 +180,7 @@ fieldset:last-child > table > tbody > tr:not(:first-child) > td:nth-child(7) inp
   padding: 0.25rem 0.5rem;
   transition: color .15s;
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {

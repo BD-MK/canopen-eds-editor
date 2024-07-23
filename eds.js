@@ -123,6 +123,7 @@ function addEventListeners(element) {
       <option>yes</option>
     </select>
   </td>
+  <td></td>
   <td>
     <button type="button" class="btn" data-role="remove">&#10006;</button>
   </td>
@@ -415,17 +416,23 @@ function loadObject(parser, sectionName, kind) {
     }
   }
   if (subNumber) {
-    for (let i = 0; i < subNumber; i++) {
+    let highestSubIndex = 0;
+    let subIndices = 0;
+    for (let i = 0; i <= highestSubIndex; i++) {
       let subIndex = i.toString(16).toUpperCase(); // Hex w/o leading zeros
       let subSectionName = `${sectionName}sub${subIndex}`;
       if (!parser.isHaveSection(subSectionName)) {
         subIndex = i.toString(16).toLowerCase(); // ConfigIniParser is case-sensitive
         subSectionName = `${sectionName}sub${subIndex}`;
         if (!parser.isHaveSection(subSectionName)) {
+          if (i == highestSubIndex) {
+            throw `[${subSectionName}] expected but not found`;
+          }
           console.info(`Section [${subSectionName}] skipped`);
           continue;
         }
       }
+      subIndices++;
       const subObjectType = parseInt(parser.get(subSectionName, 'ObjectType', '0x7'), 0);
       const subDataType = parseInt(parser.get(subSectionName, 'DataType', objectType == 0x08 ? dataType : 0), 0);
       const subAccessType = parser.get(subSectionName, 'AccessType', '');
@@ -467,14 +474,14 @@ function loadObject(parser, sectionName, kind) {
     </td>
     <td>`;
       if (i == 0 && [0x08, 0x09].includes(objectType)) {
-        const highestSubIndex = parseInt(parser.get(subSectionName, 'DefaultValue', 0), 0);
-        if (subNumber == 1 && highestSubIndex != 0) {
-          throw 'SubNumber is greater than highest sub-index';
+        highestSubIndex = parseInt(parser.get(subSectionName, 'DefaultValue', 0), 0);
+        if ((subNumber == 1 && highestSubIndex == 1) || (highestSubIndex < (subNumber - 1))) {
+          throw `SubNumber / highest sub-index impossibility for [${sectionName}]`;
         } else if (highestSubIndex > subNumber - 1) {
           console.info(`Complex object [${sectionName}] has non-sequential sub-indices`);
         }
         html += `
-      <input type="text" value="${subNumber - 1}" maxlength="242">`;
+      <input type="text" value="${highestSubIndex}" maxlength="242">`;
       } else {
         html += `
       <input type="text" value="${parser.get(subSectionName, 'DefaultValue', '')}" maxlength="242">`;
@@ -497,6 +504,9 @@ function loadObject(parser, sectionName, kind) {
       ${i > 0 ? '<button type="button" class="btn" data-role="remove">&#10006;</button>' : ''}
     </td>
   </tr>`;
+    }
+    if (subIndices < subNumber) {
+      throw `Only ${subIndices} of ${subNumber} sub-indices found in [${sectionName}]`;
     }
   }
   html += `
@@ -740,8 +750,28 @@ document.addEventListener('DOMContentLoaded', event => {
               loadObject(parser, sectionName, element == 'Manufacturer' ? '' : element.toLowerCase());
             }
           });
+
+          // Sort by SI
+          const table = document.querySelector('fieldset:last-child table');
+          let switching = true;
+          let shouldSwitch;
+          while (switching) {
+            switching = false;
+            rows = table.querySelectorAll('tbody');
+            for (i = 1; i < (rows.length - 1); i++) {
+              shouldSwitch = false;
+              if (rows[i].dataset.mi > rows[i + 1].dataset.mi) {
+                shouldSwitch = true;
+                break;
+              }
+            }
+            if (shouldSwitch) {
+              rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+              switching = true;
+            }
+          }
         } catch (error) {
-          alert(error);
+          alert(`Load failed: ${error}`);
           throw error;
         }
         document.querySelector('fieldset:last-child table').classList.add('show');
@@ -796,7 +826,7 @@ document.addEventListener('DOMContentLoaded', event => {
       objectCode.disabled = false;
       document.querySelector('tfoot td:nth-child(5) select').dispatchEvent(new Event('change'));
     } catch (error) {
-      alert(error);
+      alert(`Add failed: ${error}`);
       parameterName.disabled = true;
       objectKind.disabled = true;
       objectCode.disabled = true;
@@ -860,12 +890,13 @@ document.addEventListener('DOMContentLoaded', event => {
     const tfoot = event.target.closest('tfoot');
     const index = tfoot.querySelector('td:first-child input');
     const objectCode = parseInt(tfoot.querySelector('td:nth-child(5) select').value);
+    const nameInput = tfoot.querySelector('td:nth-child(3) input');
     let html = `
 <tbody data-mi="${index.value}" data-oc="${tfoot.querySelector('td:nth-child(5) select').value}">
   <tr>
     <td${[8, 9].includes(objectCode) ? ' rowspan="2"' : ''}>${index.value}<sub>h</sub></td>
     <td></td>
-    <td><input type="text" maxlength="241" value="${tfoot.querySelector('td:nth-child(3) input').value}"></td>
+    <td><input type="text" maxlength="241" value="${nameInput.value}"></td>
     <td>${tfoot.querySelector('td:nth-child(4)').innerHTML}</td>
     <td>${CanOpen.OBJECT_TYPES[objectCode]}</td>
     <td>${tfoot.querySelector('td:nth-child(6)').innerHTML}</td>
@@ -884,12 +915,35 @@ document.addEventListener('DOMContentLoaded', event => {
     <td><input type="text maxlength="241" value="Highest sub-index supported"></td>
     <td></td>
     <td>VAR</td>
-    <td></td>
-    <td></td>
+    <td>
+      <select disabled>`;
+    Object.entries(CanOpen.STANDARD_DATA_TYPES).forEach(element => {
+      [value, name] = element;
+      html += `
+        <option value="${value}"${name == 'UNSIGNED8' ? ' selected' : ''}>${name}</option>`;
+    });
+    html += `</td>
+    <td>
+      <select disabled>`;
+    CanOpen.ACCESS_TYPES.forEach(element => {
+      html += `
+        <option${element == 'ro' ? ' selected' : ''}>${element}</option>`;
+    });
+    html += `
+      </select>
+    </td>
     <td><input type="text" maxlength="244"></td>
     <td><input type="text" maxlength="243"></td>
     <td><input type="text" value="0" maxlength="242"></td>
-    <td></td>
+    <td>
+      <select>`;
+    Object.entries(CanOpen.PDO_MAPPING_OPTIONS).forEach(element => {
+      [value, name] = element;
+      html += `
+        <option value="${value}" ${name == 'no' ? ' selected' : ''}>${name}</option>`;
+    });
+    html += `
+    </td>
     <td></td>
     <td></td>
   </tr>`;
@@ -898,20 +952,28 @@ document.addEventListener('DOMContentLoaded', event => {
 </tbody>`;
     tfoot.insertAdjacentHTML('beforebegin', html);
     [4, 6, 7, 11].forEach(n => {
-      tfoot.previousElementSibling.querySelector(`td:nth-child(${n}) select`).selectedIndex = tfoot.querySelector(`td:nth-child(${n}) select`).selectedIndex;
+      const select = tfoot.querySelector(`td:nth-child(${n}) select`);
+      tfoot.previousElementSibling.querySelector(`td:nth-child(${n}) select`).selectedIndex = select.selectedIndex;
+      select.selectedIndex = 0;
     });
     [8, 9, 10].forEach(n => {
-      tfoot.previousElementSibling.querySelector(`td:nth-child(${n}) input`).value = tfoot.querySelector(`td:nth-child(${n}) input`).value;
+      const input =  tfoot.querySelector(`td:nth-child(${n}) input`);
+      tfoot.previousElementSibling.querySelector(`td:nth-child(${n}) input`).value = input.value;
+      input.value = '';
     });
     [1, 2].forEach(n => {
       const td = tfoot.previousElementSibling.querySelector('td:nth-child(12)');
       const cb = td.querySelector(`input:nth-of-type(${n})`);
-      cb.checked = tfoot.querySelector(`td:nth-child(12) input:nth-of-type(${n})`).checked;
+      const input = tfoot.querySelector(`td:nth-child(12) input:nth-of-type(${n})`);
+      cb.checked = input.checked;
       cb.id += index.value;
       td.querySelector(`label:nth-of-type(${n})`).htmlFor += index.value;
+      input.checked = false;
     });
     addEventListeners(tfoot.previousElementSibling);
     index.value = '';
+    nameInput.value = '';
+    tfoot.querySelector('td:nth-child(3)').value = '';
     tfoot.querySelectorAll('td:not(:first-child) input:not([type="checkbox"]), td:not(:first-child) select').forEach(element => element.disabled = true);
     event.target.disabled = true;
   });
@@ -952,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', event => {
       if (document.querySelector('#auto_vendor_number').checked) {
         vendorNumber = document.querySelector('[data-mi="1018"] [data-si="1"] td:nth-child(9) input');
         if (!vendorNumber) {
-          throw 'Vendor number entity does not exist in Identify object [1018sub1]';
+          throw 'Vendor number entity does not exist in Identity object [1018sub1]';
         }
         vendorNumber = vendorNumber.value;
       } else {
@@ -976,7 +1038,7 @@ document.addEventListener('DOMContentLoaded', event => {
       if (document.querySelector('#auto_product_number').checked) {
         productNumber = document.querySelector('[data-mi="1018"] [data-si="2"] td:nth-child(9) input');
         if (!productNumber) {
-          throw 'Product number entity does not exist in Identify object [1018sub2]';
+          throw 'Product number entity does not exist in Identity object [1018sub2]';
         }
         productNumber = productNumber.value;
       } else {
@@ -990,7 +1052,7 @@ document.addEventListener('DOMContentLoaded', event => {
       if (document.querySelector('#auto_revision_number').checked) {
         revisionNumber = document.querySelector('[data-mi="1018"] [data-si="3"] td:nth-child(9) input');
         if (!revisionNumber) {
-          throw 'Revision number entity does not exist in Identify object [1018sub3]';
+          throw 'Revision number entity does not exist in Identity object [1018sub3]';
         }
         revisionNumber = revisionNumber.value;
       } else {
@@ -1041,49 +1103,36 @@ document.addEventListener('DOMContentLoaded', event => {
         });
       }
 
-      const mandatoryObjects = [];
-      const optionalObjects = [];
-      const manufacturerObjects = [];
+      const objects = {
+        'Mandatory': [],
+        'Optional': [],
+        'Manufacturer': []
+      }
       document.querySelectorAll('[data-mi]').forEach(element => {
         if (element.dataset.mi.match(/^1|[6-9]/)) {
            if (element.querySelector('td:nth-child(4) select').value == 'mandatory') {
-             mandatoryObjects.push(element.dataset.mi);
+             objects['Mandatory'].push(element.dataset.mi);
            } else {
-             optionalObjects.push(elements.dataset.mi);
+             objects['Optional'].push(element.dataset.mi);
            }
         } else {
-          manufacturerObjects.push(element.dataset.mi);
+          objects['Manufacturer'].push(element.dataset.mi);
         }
       });
 
-      if (mandatoryObjects.length) {
-        parser.addSection('MandatoryObjects');
-        parser.set('MandatoryObjects', 'SupportedObjects', mandatoryObjects.length); // UNSIGNED16
-        mandatoryObjects.forEach((element, index) => {
-          parser.set('MandatoryObjects', index + 1, `0x${element}`);
+      Object.entries(objects).forEach(entry => {
+        const [key, sectionObjects] = entry;
+        const sectionName = `${key}Objects`;
+        parser.addSection(sectionName);
+        parser.set(sectionName, 'SupportedObjects', sectionObjects.length) // UNSIGNED16
+        sectionObjects.sort();
+        sectionObjects.forEach((element, index) => {
+          parser.set(sectionName, index + 1, `0x${element}`);
           saveObject(parser, element);
-         });
-      }
-
-      if (optionalObjects.length) {
-        parser.addSection('OptionalObjects');
-        parser.set('MandatoryObjects', 'SupportedObjects', optionalObjects.length); // UNSIGNED16
-        optionalObjects.forEach((element, index) => {
-          parser.set('OptionalObjects', index + 1, `0x${element}`);
-          saveObject(parser, element);
-         });
-      }
-
-      if (manufacturerObjects.length) {
-        parser.addSection('ManufacturerObjects');
-        parser.set('ManufacturerObjects', 'SupportedObjects', manufacturerObjects.length); // UNSIGNED16
-        manufacturerObjects.forEach((element, index) => {
-          parser.set('ManufacturerObjects', index + 1, `0x${element}`);
-          saveObject(parser, element);
-         });
-      }
+        });
+      });
     } catch (error) {
-      alert(error);
+      alert(`Save failed: ${error}`);
       throw error;
     }
 
