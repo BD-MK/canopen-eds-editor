@@ -476,7 +476,7 @@ function loadObject(parser, sectionName, kind) {
       if (i == 0 && [0x08, 0x09].includes(objectType)) {
         highestSubIndex = parseInt(parser.get(subSectionName, 'DefaultValue', 0), 0);
         if ((subNumber == 1 && highestSubIndex == 1) || (highestSubIndex < (subNumber - 1))) {
-          throw `SubNumber / highest sub-index impossibility for [${sectionName}]`;
+          throw `SubNumber / highest sub-index impossibility for [${sectionName}]. SubNumber is ${subNumber} but highest sub-index is ${highestSubIndex}`;
         } else if (highestSubIndex > subNumber - 1) {
           console.info(`Complex object [${sectionName}] has non-sequential sub-indices`);
         }
